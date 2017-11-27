@@ -1,0 +1,12 @@
+ArgumentVector:
+- $file
+CondaDependenciesFile: aml_config/conda_dependencies.yml
+"Framework": "Python"
+PrepareEnvironment: true
+SparkDependenciesFile: aml_config/spark_dependencies.yml
+Target: sample_dsvm
+TrackedRun: true
+UseSampling: true
+EnvironmentVariables:
+  "STORAGE_ACCOUNT_NAME": "<YOUR_AZURE_STORAGE_ACCOUNT_NAME>"
+  "STORAGE_ACCOUNT_KEY": "<YOUR_AZURE_STORAGE_ACCOUNT_KEY>"
