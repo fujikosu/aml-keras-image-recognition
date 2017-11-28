@@ -488,10 +488,10 @@ if __name__ == '__main__':
     model_name = FLAGS.output_model if FLAGS.output_model else build_model_name(
         FLAGS)
     logger.info('Model name {}'.format(model_name))
-        shared_data_path = os.path.join(os.environ['AZUREML_NATIVE_SHARE_DIRECTORY'])
-    if load_file_from_blob("images", "data.zip",
-                       os.path.join(shared_data_path, "data.zip")) is True:
-    unzip_file(os.path.join(shared_data_path, "data.zip"), shared_data_path)
+    shared_data_path = os.path.join(os.environ['AZUREML_NATIVE_SHARE_DIRECTORY'])
+    if load_file_from_blob("images", "flower_data.zip",
+                       os.path.join(shared_data_path, "flower_data.zip")) is True:
+        unzip_file(os.path.join(shared_data_path, "flower_data.zip"), shared_data_path)
     FLAGS.image_dir = os.path.join(shared_data_path, "data")
     trained_model, weights, training_data, im_sz = train_model(
         FLAGS.image_dir,
