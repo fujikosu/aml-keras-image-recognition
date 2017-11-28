@@ -37,12 +37,18 @@ import os
 import argparse
 import logging
 from distutils.util import strtobool
+from utils.misc.azure_utils import load_file_from_blob
+from utils.misc.zip_helper import unzip_file
+from azureml.logging import get_azureml_logger
+import time
 
 FLAGS = None
 
 logger = logging.getLogger('train_keras')
 logger.setLevel(logging.INFO)
 logger.addHandler(logging.StreamHandler())
+aml_run_logger = get_azureml_logger()
+
 
 activations = {
     'relu': 'relu',
@@ -253,6 +259,7 @@ def train_model(img_path,
         gpu_model.compile(
             optimizer=RMSprop(lr=learning_rates[0]),
             loss='categorical_crossentropy')
+        start_time = time.perf_counter()
         gpu_model.fit_generator(
             train_gen,
             steps_per_epoch=len(train_gen.classes) / batch_size,
@@ -261,10 +268,13 @@ def train_model(img_path,
             validation_steps=len(valid_gen.classes) / batch_size,
             class_weight=wts,
             callbacks=callbacks)
+        execution_time = time.perf_counter() - start_time
+        aml_run_logger.log("Initial training execution time", execution_time)
     else:
         model.compile(
             optimizer=RMSprop(lr=learning_rates[0]),
             loss='categorical_crossentropy')
+        start_time = time.perf_counter()
         model.fit_generator(
             train_gen,
             steps_per_epoch=len(train_gen.classes) / batch_size,
@@ -273,6 +283,8 @@ def train_model(img_path,
             validation_steps=len(valid_gen.classes) / batch_size,
             class_weight=wts,
             callbacks=callbacks)
+        execution_time = time.perf_counter() - start_time
+        aml_run_logger.log("Initial training execution time", execution_time)
 
     num_to_unfreeze = -1 * (len(dense_layers) + 1)
     for layer in model.layers[:num_to_unfreeze]:
@@ -289,6 +301,7 @@ def train_model(img_path,
                 loss='categorical_crossentropy')
             # we train our model again (this time fine-tuning the top 2 inception blocks
             # alongside the top Dense layers
+            start_time = time.perf_counter()
             gpu_model.fit_generator(
                 train_gen,
                 steps_per_epoch=len(train_gen.classes) / batch_size,
@@ -297,12 +310,15 @@ def train_model(img_path,
                 validation_steps=len(valid_gen.classes) / batch_size,
                 class_weight=wts,
                 callbacks=callbacks)
+            execution_time = time.perf_counter() - start_time
+            aml_run_logger.log("Second training execution time", execution_time)
         else:
             model.compile(
                 optimizer=SGD(lr=lr, momentum=momentum),
                 loss='categorical_crossentropy')
             # we train our model again (this time fine-tuning the top 2 inception blocks
             # alongside the top Dense layers
+            start_time = time.perf_counter()
             model.fit_generator(
                 train_gen,
                 steps_per_epoch=len(train_gen.classes) / batch_size,
@@ -311,6 +327,8 @@ def train_model(img_path,
                 validation_steps=len(valid_gen.classes) / batch_size,
                 class_weight=wts,
                 callbacks=callbacks)
+            execution_time = time.perf_counter() - start_time
+            aml_run_logger.log("Second training execution time", execution_time)
     return model, wts, train_gen, img_size
 
 
@@ -335,13 +353,13 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument(
-        '--image_dir',
-        type=str,
-        required=True,
-        help=
-        'Path to folders of labeled images, will assume subdirectories named "training" and "validation" (see train_test_split.py).'
-    )
+    # parser.add_argument(
+    #     '--image_dir',
+    #     type=str,
+    #     required=True,
+    #     help=
+    #     'Path to folders of labeled images, will assume subdirectories named "training" and "validation" (see train_test_split.py).'
+    # )
     parser.add_argument(
         '--flip',
         type=strtobool,
@@ -367,7 +385,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--tensorflow_logs',
         type=str,
-        default='./tf_logs/',
+        default='./outputs/tf_logs/',
         help='Path to output tensorflow logs. Defaults to ./tf_logs/.')
     parser.add_argument(
         '--model_type',
@@ -379,7 +397,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--model_dir',
         type=str,
-        default='./models',
+        default='./outputs/models',
         help=
         'model_dir + output_model + ".h5" == full output model file path. Defaults to ./models.')
     parser.add_argument(
@@ -470,6 +488,11 @@ if __name__ == '__main__':
     model_name = FLAGS.output_model if FLAGS.output_model else build_model_name(
         FLAGS)
     logger.info('Model name {}'.format(model_name))
+        shared_data_path = os.path.join(os.environ['AZUREML_NATIVE_SHARE_DIRECTORY'])
+    if load_file_from_blob("images", "data.zip",
+                       os.path.join(shared_data_path, "data.zip")) is True:
+    unzip_file(os.path.join(shared_data_path, "data.zip"), shared_data_path)
+    FLAGS.image_dir = os.path.join(shared_data_path, "data")
     trained_model, weights, training_data, im_sz = train_model(
         FLAGS.image_dir,
         FLAGS.model_type,

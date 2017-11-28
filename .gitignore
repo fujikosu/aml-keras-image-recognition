@@ -1,3 +1,9 @@
+# Azure ML Services
+.azuremlhistory_git
+.azuremlhistory_git
+.azureml/project.json
+azureml-logs
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
