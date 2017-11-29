@@ -353,13 +353,27 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
-    # parser.add_argument(
-    #     '--image_dir',
-    #     type=str,
-    #     required=True,
-    #     help=
-    #     'Path to folders of labeled images, will assume subdirectories named "training" and "validation" (see train_test_split.py).'
-    # )
+    parser.add_argument(
+        '--image_dir',
+        type=str,
+        required=True,
+        help=
+        'Path to folders for storing labeled images, this goes under os.environ[\'AZUREML_NATIVE_SHARE_DIRECTORY\'] directory. See this link for detailed information'
+    )
+    parser.add_argument(
+        '--zipfile',
+        type=str,
+        required=True,
+        help=
+        'Filename of zip file of labeled images stored in Blob Storage, will assume subdirectories in zipfile named "training" and "validation" (see train_test_split.py).'
+    )
+    parser.add_argument(
+        '--blob_container',
+        type=str,
+        required=True,
+        help=
+        'Container name of zip file stored in Blob Storage, will try to download from blob_container/zipfile'
+    )
     parser.add_argument(
         '--flip',
         type=strtobool,
@@ -489,12 +503,11 @@ if __name__ == '__main__':
         FLAGS)
     logger.info('Model name {}'.format(model_name))
     shared_data_path = os.path.join(os.environ['AZUREML_NATIVE_SHARE_DIRECTORY'])
-    if load_file_from_blob("images", "flower_data.zip",
-                       os.path.join(shared_data_path, "flower_data.zip")) is True:
-        unzip_file(os.path.join(shared_data_path, "flower_data.zip"), shared_data_path)
-    FLAGS.image_dir = os.path.join(shared_data_path, "data")
+    if load_file_from_blob(FLAGS.blob_container, FLAGS.zipfile,
+                       os.path.join(shared_data_path, FLAGS.image_dir, FLAGS.zipfile)) is True:
+        unzip_file(os.path.join(shared_data_path, FLAGS.zipfile), shared_data_path)
     trained_model, weights, training_data, im_sz = train_model(
-        FLAGS.image_dir,
+        os.path.join(shared_data_path, FLAGS.image_dir),
         FLAGS.model_type,
         FLAGS.tensorflow_logs,
         flip=FLAGS.flip,

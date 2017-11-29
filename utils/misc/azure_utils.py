@@ -5,17 +5,19 @@ from azure.storage.blob import BlockBlobService
 import datetime
 
 
-def load_file_from_blob(container, file_name, dest):
+def load_file_from_blob(container, file_name, dest_dir):
     print("Starting download of {}...".format(file_name))
-    if os.path.isfile(dest):
+    save_file_path = os.path.join(dest_dir, file_name)
+    if os.path.isfile(save_file_path):
         print("File {} already exists, skipping download from Azure Blob.".
-              format(dest))
+              format(save_file_path))
         return False
 
     blob_service = get_blob_service()
-    print("container {0}, file_name {1}, dest {2}".format(
-        container, file_name, dest))
-    blob_service.get_blob_to_path(container, file_name, dest)
+    print("container {0}, file_name {1}, destination_directory {2}".format(
+        container, file_name, dest_dir))
+    os.makedirs(dest_dir, exist_ok=True)
+    blob_service.get_blob_to_path(container, file_name, save_file_path)
     return True
 
 
