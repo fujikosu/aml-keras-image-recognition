@@ -5,8 +5,8 @@ Uses Transfer Learning from an existing Keras "Application" (see https://keras.i
 - Freeze all layers in the base model
 - Add a new pooling layer (either global max or avg) if asked (see --pooling)
 - Add one or more new dense layers (see --dense_layers) with activation functions (see --activation)
-- Train the model using RMSProp for epochs[0] epochs using learning_rates[0]
-- Then unfreeze the model, and train for len(epochs)-1 additional rounds, for epochs[1:] epochs using SGD and learning_rates[1:] with momentum --momentum.
+- Train the model using an optimizers[0] for epochs[0] epochs using learning_rates[0]
+- Then unfreeze the model, and train for len(epochs)-1 additional rounds, for epochs[1:] epochs using optimizers[1:] and learning_rates[1:].
 - Class weighting may be used (see --use_weights), and if so will weight proportionally to 1. - (# class N / total #).
 
 It then writes the model file to --model_dir using a composite name for all model parameters, and a Markdown description alongsize. You can then use score_keras.py to evaluate the model.
@@ -24,7 +24,7 @@ from keras.layers.advanced_activations import LeakyReLU, PReLU
 from keras.preprocessing import image
 from keras.models import Model
 from keras.layers import Dense, GlobalAveragePooling2D, GlobalMaxPooling2D
-from keras.optimizers import SGD, RMSprop
+from keras.optimizers import SGD, RMSprop, Adagrad, Adadelta, Adam, Adamax, Nadam
 from keras import backend as K
 from keras.callbacks import TensorBoard
 from keras.utils import multi_gpu_model
@@ -49,7 +49,6 @@ logger.setLevel(logging.INFO)
 logger.addHandler(logging.StreamHandler())
 aml_run_logger = get_azureml_logger()
 
-
 activations = {
     'relu': 'relu',
     'prelu': lambda: PReLU(),
@@ -58,6 +57,16 @@ activations = {
     'selu': 'selu',
     'tanh': 'tanh',
     'softmax': 'softmax'
+}
+
+optimizer_types = {
+    'SGD': lambda lr: SGD(lr=lr), 
+    'RMSprop': lambda lr: RMSprop(lr=lr), 
+    'Adagrad': lambda lr: Adagrad(lr=lr), 
+    'Adadelta': lambda lr: Adadelta(lr=lr), 
+    'Adam': lambda lr: Adam(lr=lr), 
+    'Adamax': lambda lr: Adamax(lr=lr), 
+    'Nadam': lambda lr: Nadam(lr=lr)
 }
 
 model_types = {
@@ -89,22 +98,22 @@ pooling_types = {
     'none': lambda x: x
 }
 
-
 def build_model_name(options):
     ts = '' if not options.add_timestamp_suffix else datetime.now().strftime('_%Y%m%dT%H%M%S')
     mn = options.model_type
     topology = options.pooling + '-' + '-'.join(map(str, options.dense_layers))
     af = options.activation
+    opts = '-'.join(options.optimizers)
     lrs = '-'.join([str(lr)[2:] for lr in options.learning_rates])
     wts = 'wts' if options.use_weights else 'nowts'
     epochs = '-'.join(map(str, options.epochs))
-    return '{}_{}_{}_lr{}_{}_e{}{}'.format(mn, topology, af, lrs, wts, epochs, ts)
+    return '{}_{}_{}_opts-{}_lr{}_{}_e{}{}'.format(mn, topology, af, opts, lrs, wts, epochs, ts)
 
 
 def write_model_desc(options, model_path, model_name, classes, weights, train_gen, cm_path, metrics):
     desc_file = os.path.join(model_path, model_name + '_desc.md')
     logger.info('Writing model description to {}'.format(desc_file))
-    with open(desc_file, 'w') as fp:
+    with open(desc_file, 'w', encoding='utf-8') as fp:
         fp.write('# Model Details\n\n')
         fp.write('#### Model Type: {}\n\n'.format(options.model_type))
         fp.write(
@@ -126,32 +135,38 @@ def write_model_desc(options, model_path, model_name, classes, weights, train_ge
             fp.write('No class weighting was used.\n')
         fp.write('\n\n# Training Details\n\n')
         fp.write(
-            'We go through an initial training with frozen weights for all layers of the base model, using RMSProp with a learning rate of {}, for {} epochs.\n\n'.
-            format(options.learning_rates[0], options.epochs[0]))
+            'We go through an initial training with frozen weights for all layers of the base model, using {} with a learning rate of {}, for {} epochs.\n\n'.
+            format(options.optimizers[0], options.learning_rates[0], options.epochs[0]))
         fp.write(
-            'After that, we unfreeze all layers and retrain {} times, using SGD and the following learning rates/epochs:\n\n'.
+            'After that, we unfreeze all layers and retrain {} times, using the following optimizers/learning rates/epochs:\n\n'.
             format(len(options.epochs) - 1))
-        for lr, epoch in zip(options.learning_rates[1:], options.epochs[1:]):
-            fp.write('- Rate {} for {} epochs'.format(lr, epoch))
+        for opt, lr, epoch \
+                in zip(options.optimizers[1:], options.learning_rates[1:], options.epochs[1:]):
+            fp.write('- Using {} with Learning Rate {} for {} epochs'.format(opt, lr, epoch))
         fp.write('\n\n{} training images were used in {} classes.'.format(
             len(train_gen.classes), train_gen.num_classes))
-        if cm_path or any(metrics):
+        if cm_path or metrics:
             fp.write('\n\n# Scoring and Evaluation\n\n')
             if cm_path:
                 fp.write('### Confusion Matrix:\n\n')
                 fp.write('![Confusion Matrix](./{})\n\n'.format(os.path.basename(cm_path)))
-            if any(metrics):
+            if metrics:
+                logger.info('Metrics:')
+                logger.info(metrics)
                 fp.write('### Evaluation Metrics (on Test Set)\n\n')
-                for metric in metrics:
+                for metric in metrics.keys():
+                    logger.info('Writing metric {}'.format(metric))
                     vals = metrics[metric]
                     # Metric is per-class
-                    if len(vals) == len(classes):
+                    if hasattr(vals, '__iter__') and len(vals) == len(classes):
                         fp.write('- {}:\n'.format(metric))
+                        #vals_by_class = dict(zip(classes, vals))
+                        #aml_run_logger.log(metric, vals_by_class)
                         for idx in range(len(vals)):
                             fp.write('    - {}: {}\n'.format(classes[idx], vals[idx]))
                     else:
                         fp.write('- {}: {}\n'.format(metric, metrics[metric]))
-
+                        aml_run_logger.log(metric, metrics[metric])
 
 def load_images(img_path, flip, rotate, zoom, shear, batch_size, img_size,
                 seed):
@@ -191,9 +206,9 @@ def train_model(img_path,
                 batch_size=32,
                 pooling='max',
                 dense_layers=[1024],
+                optimizers=['RMSprop', 'SGD'],
                 learning_rates=[0.001, 0.005],
                 activation='relu',
-                momentum=0.9,
                 epochs=[5, 5],
                 use_weights=False,
                 seed=1337,
@@ -250,14 +265,15 @@ def train_model(img_path,
     for layer in base_model.layers:
         layer.trainable = False
 
-    logger.info('Initial training using LR {}'.format(learning_rates[0]))
+    logger.info('Initial training using Optimizer {} and LR {}'.format(\
+        optimizers[0], learning_rates[0]))
     logger.info('Use {} GPUs'.format(gpu))
 
     if gpu > 1:
         gpu_model = multi_gpu_model(model, gpus=gpu)
         batch_size = batch_size * gpu
         gpu_model.compile(
-            optimizer=RMSprop(lr=learning_rates[0]),
+            optimizer=optimizer_types[optimizers[0]](learning_rates[0]),
             loss='categorical_crossentropy')
         start_time = time.perf_counter()
         gpu_model.fit_generator(
@@ -272,7 +288,7 @@ def train_model(img_path,
         aml_run_logger.log("Initial training execution time", execution_time)
     else:
         model.compile(
-            optimizer=RMSprop(lr=learning_rates[0]),
+            optimizer=optimizer_types[optimizers[0]](learning_rates[0]),
             loss='categorical_crossentropy')
         start_time = time.perf_counter()
         model.fit_generator(
@@ -292,12 +308,12 @@ def train_model(img_path,
     for layer in model.layers[num_to_unfreeze:]:
         layer.trainable = True
 
-    for lr, epoch in zip(learning_rates[1:], epochs[1:]):
-        logger.info('Training {} epochs using LR {}'.format(epoch, lr))
+    for optimizer, lr, epoch in zip(optimizers[1:], learning_rates[1:], epochs[1:]):
+        logger.info('Training {} epochs using Optimizer {} and LR {}'.format(epoch, optimizer, lr))
         if gpu > 1:
             gpu_model = multi_gpu_model(model, gpus=gpu)
             gpu_model.compile(
-                optimizer=SGD(lr=lr, momentum=momentum),
+                optimizer=optimizer_types[optimizer](lr),
                 loss='categorical_crossentropy')
             # we train our model again (this time fine-tuning the top 2 inception blocks
             # alongside the top Dense layers
@@ -314,7 +330,7 @@ def train_model(img_path,
             aml_run_logger.log("Second training execution time", execution_time)
         else:
             model.compile(
-                optimizer=SGD(lr=lr, momentum=momentum),
+                optimizer=optimizer_types[optimizer](lr),
                 loss='categorical_crossentropy')
             # we train our model again (this time fine-tuning the top 2 inception blocks
             # alongside the top Dense layers
@@ -332,7 +348,7 @@ def train_model(img_path,
     return model, wts, train_gen, img_size
 
 
-def evaluate(model_root, model, images, image_size, num_batches, seed):
+def evaluate(model_root, model, images, image_size, num_batches, seed, top_n=None):
     imagegen = image.ImageDataGenerator()
     test_gen = image.DirectoryIterator(
         os.path.join(images, 'testing'),
@@ -344,8 +360,8 @@ def evaluate(model_root, model, images, image_size, num_batches, seed):
     classes = [x[0] for x in sorted(test_gen.class_indices.items(), key=lambda x: x[1])]
     metrics_path = model_root + "_metrics.csv"
     cm_path = model_root + "_cm.png"
-    metrics = score_keras.evaluate_model(model, test_gen, classes, num_batches,
-                                         metrics_path, cm_path)
+    metrics, _, _ = score_keras.evaluate_model(model, test_gen, classes, num_batches,
+                                               metrics_path, cm_path, top_n=top_n)
     return classes, cm_path, metrics
 
 
@@ -353,13 +369,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
-    # parser.add_argument(
-    #     '--image_dir',
-    #     type=str,
-    #     required=True,
-    #     help=
-    #     'Path to folders of labeled images, will assume subdirectories named "training" and "validation" (see train_test_split.py).'
-    # )
     parser.add_argument(
         '--flip',
         type=strtobool,
@@ -439,16 +448,18 @@ if __name__ == '__main__':
         'Activation function to use for additional dense layers. Defaults to relu.'
     )
     parser.add_argument(
+        '--optimizers',
+        type=str,
+        nargs='+',
+        default=['RMSprop', 'SGD'],
+        help='Optimzers to use for training. Defaults to RMSProp for initial training and SGD for subsequent.'
+    )
+    parser.add_argument(
         '--learning_rates',
         type=float,
         nargs='+',
         default=[0.001, 0.005],
         help='Learning rates. Defaults to [0.001, 0.005].')
-    parser.add_argument(
-        '--momentum',
-        type=float,
-        default=0.9,
-        help='Momentum for SGD in subsequent training. Defaults to 0.9.')
     parser.add_argument(
         '--epochs',
         type=int,
@@ -489,10 +500,10 @@ if __name__ == '__main__':
         FLAGS)
     logger.info('Model name {}'.format(model_name))
     shared_data_path = os.path.join(os.environ['AZUREML_NATIVE_SHARE_DIRECTORY'])
-    if load_file_from_blob("images", "flower_data.zip",
-                       os.path.join(shared_data_path, "flower_data.zip")) is True:
-        unzip_file(os.path.join(shared_data_path, "flower_data.zip"), shared_data_path)
-    FLAGS.image_dir = os.path.join(shared_data_path, "data")
+    if load_file_from_blob("images", "image_set.zip",
+                       os.path.join(shared_data_path, "image_set.zip")) is True:
+        unzip_file(os.path.join(shared_data_path, "image_set.zip"), shared_data_path)
+    FLAGS.image_dir = os.path.join(shared_data_path, "image_set")
     trained_model, weights, training_data, im_sz = train_model(
         FLAGS.image_dir,
         FLAGS.model_type,
@@ -505,8 +516,8 @@ if __name__ == '__main__':
         pooling=FLAGS.pooling,
         activation=FLAGS.activation,
         dense_layers=FLAGS.dense_layers,
+        optimizers=FLAGS.optimizers,
         learning_rates=FLAGS.learning_rates,
-        momentum=FLAGS.momentum,
         epochs=FLAGS.epochs,
         use_weights=FLAGS.use_weights,
         seed=FLAGS.seed,
@@ -516,9 +527,26 @@ if __name__ == '__main__':
     logger.info('Saving model to {}'.format(model_file))
     os.makedirs(os.path.dirname(model_file), exist_ok=True)
     trained_model.save(model_file)
+    aml_run_logger.log("hyperparameters", {
+        "flip": FLAGS.flip,
+        "rotate": FLAGS.rotate,
+        "zoom": FLAGS.zoom,
+        "shear": FLAGS.shear,
+        "batch_size": FLAGS.batch_size,
+        "pooling": FLAGS.pooling,
+        "activation": FLAGS.activation,
+        "dense_layers": FLAGS.dense_layers,
+        "optimizers": FLAGS.optimizers,
+        "learning_rates": FLAGS.learning_rates,
+        "epochs": FLAGS.epochs,
+        "weights": weights
+    })
+    classes = None
+    cm_path = None
+    metrics = None
     if FLAGS.score:
         logger.info('Model and description saved. Evaluating and scoring.')
         classes, cm_path, metrics = evaluate(model_root, trained_model, FLAGS.image_dir, im_sz,
-            FLAGS.num_batches_to_score, FLAGS.seed)
+            FLAGS.num_batches_to_score, FLAGS.seed, top_n=3)
     write_model_desc(FLAGS, FLAGS.model_dir, model_name, classes, weights,
                         training_data, cm_path, metrics)
