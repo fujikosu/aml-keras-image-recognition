@@ -62,9 +62,9 @@ def load_model_and_images(model_file, image_dir, seed):
 
     return model, test_gen, classes
 
-def evaluate_model(model, image_gen, classes, num_batches, output_metrics, output_image, beta=1.):
+def evaluate_model(model, image_gen, classes, num_batches, output_metrics, output_image, top_n=None, beta=1.):
     for batch_num in range(num_batches):
-        print('Processing batch %d of %d' % (batch_num, num_batches))
+        logger.info('Processing batch %d of %d' % (batch_num, num_batches))
         cur_x, cur_y = image_gen.next()
         cur_y_pred = model.predict(cur_x)
         if batch_num == 0:
@@ -77,10 +77,10 @@ def evaluate_model(model, image_gen, classes, num_batches, output_metrics, outpu
     y_p_v = np.argmax(y_pred, axis=1)
     metrics = {}
     if output_image:
-        print('Writing confusion matrix to %s' % output_image)
+        logger.info('Writing confusion matrix to %s' % output_image)
         plot_confusion_matrix(confusion_matrix(y_v, y_p_v), classes, output_image)
     if output_metrics:
-        print('Writing metrics to %s' % output_metrics)
+        logger.info('Writing metrics to %s' % output_metrics)
         precision, recall, fscore, support = precision_recall_fscore_support(y_v, y_p_v, beta=beta)
         metrics = {
             'Precision': precision,
@@ -88,12 +88,36 @@ def evaluate_model(model, image_gen, classes, num_batches, output_metrics, outpu
             'F-Score': fscore,
             'Support': support
         }
-        print('Precision: {}, Recall: {}, F-Score: {}, Support: {}'.format(precision, recall, fscore, support))
+        if top_n:
+            top_idx = len(classes) - top_n
+            y_p_ordered = np.argpartition(y_pred, top_idx, axis=1)
+            cnt = 0
+            # Is there a numpy way to do this without iterating?
+            # I was looking at np.where, but can't figure out how to 
+            #  broadcast actuals against predictions
+            for actual, pred in zip(y_v, y_p_ordered):
+                if actual in pred[top_idx:]:
+                    # print('Found {} at index {} of {}'.format(actual, np.where(pred==actual)[0], pred))
+                    cnt += 1
+                #else:
+                    # print('Failed to find {} before {}, found at index {} of {}'.format(actual, top_idx, np.where(pred==actual)[0], pred))
+            tot = len(y_v)
+            logger.info('Top {}: {} of {}'.format(top_n, cnt, tot))
+            top_n_value = float(cnt) / tot
+            metrics['Top_{}'.format(top_n)] = top_n_value
+            logger.info('Precision: {}, Recall: {}, F-Score: {}, Support: {}, Top_{}: {}'\
+                .format(precision, recall, fscore, support, top_n, top_n_value))
+        else:
+            logger.info('Precision: {}, Recall: {}, F-Score: {}, Support: {}'.format(precision, recall, fscore, support))
         os.makedirs(os.path.dirname(output_metrics), exist_ok=True)
-        with open(output_metrics, 'w') as fp:
-            fp.write('Precision, Recall, F_Score, Support\n')
-            fp.write('{}, {}, {}, {}\n'.format(precision, recall, fscore, support))
-    return metrics
+        with open(output_metrics, 'w', encoding='utf-8') as fp:
+            if top_n:
+                fp.write('Precision, Recall, F_Score, Top_{}, Support\n'.format(top_n))
+                fp.write('{}, {}, {}, {}, {}\n'.format(precision, recall, fscore, top_n_value, support))
+            else:
+                fp.write('Precision, Recall, F_Score, Support\n')
+                fp.write('{}, {}, {}, {}\n'.format(precision, recall, fscore, support))
+    return metrics, y_actual, y_pred
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__,
@@ -144,4 +168,4 @@ if __name__ == '__main__':
     m, i, c = load_model_and_images(model_path, img_path, FLAGS.seed)
     logger.info('Loaded model from {}'.format(model_path))
     logger.info('Evaluating model using images from {}'.format(img_path))
-    evaluate_model(m, i, c, FLAGS.num_batches, metrics_path, cm_path)
+    evaluate_model(m, i, c, FLAGS.num_batches, metrics_path, cm_path, top_n=1)
