@@ -167,7 +167,10 @@ def write_model_desc(options, model_path, model_name, classes, weights, train_ge
                             fp.write('    - {}: {}\n'.format(classes[idx], vals[idx]))
                     else:
                         fp.write('- {}: {}\n'.format(metric, metrics[metric]))
-                        aml_run_logger.log(metric, metrics[metric])
+                        try:
+                            aml_run_logger.log(metric, metrics[metric])
+                        except:
+                            logger.warn('Failed to log metric {} to AzureML'.format(metric))
 
 def load_images(img_path, flip, rotate, zoom, shear, batch_size, img_size,
                 seed):
