@@ -522,6 +522,7 @@ if __name__ == '__main__':
         use_weights=FLAGS.use_weights,
         seed=FLAGS.seed,
         gpu=FLAGS.gpu)
+    aml_run_logger.log('model_name', model_name)
     model_root = os.path.join(FLAGS.model_dir, model_name)
     model_file = model_root + '.h5'
     logger.info('Saving model to {}'.format(model_file))
