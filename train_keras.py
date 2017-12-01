@@ -365,6 +365,14 @@ def evaluate(model_root, model, images, image_size, num_batches, seed, top_n=Non
     cm_path = model_root + "_cm.png"
     metrics, _, _ = score_keras.evaluate_model(model, test_gen, classes, num_batches,
                                                metrics_path, cm_path, top_n=top_n)
+    class_map = model_root + "_classes.csv"
+    try:
+        with open(class_map, 'w', encoding='utf-8') as cmfp:
+            cmfp.write('Class,ID\n')
+            for i, c in enumerate(classes):
+                cmfp.write('"{}",{}\n'.format(c, i))
+    except:
+        logger.warn('Failed to write class map file.')
     return classes, cm_path, metrics
 
 
