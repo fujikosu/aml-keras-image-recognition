@@ -41,6 +41,7 @@ from utils.misc.azure_utils import load_file_from_blob
 from utils.misc.zip_helper import unzip_file
 from azureml.logging import get_azureml_logger
 import time
+import multiprocessing
 
 FLAGS = None
 
@@ -268,9 +269,13 @@ def train_model(img_path,
     for layer in base_model.layers:
         layer.trainable = False
 
+    cpu_count = multiprocessing.cpu_count()
+
     logger.info('Initial training using Optimizer {} and LR {}'.format(\
         optimizers[0], learning_rates[0]))
     logger.info('Use {} GPUs'.format(gpu))
+    aml_run_logger.log("cpu count", cpu_count)
+
 
     if gpu > 1:
         gpu_model = multi_gpu_model(model, gpus=gpu)
@@ -286,6 +291,8 @@ def train_model(img_path,
             validation_data=valid_gen,
             validation_steps=len(valid_gen.classes) / batch_size,
             class_weight=wts,
+            use_multiprocessing=True,
+            workers=cpu_count,
             callbacks=callbacks)
         execution_time = time.perf_counter() - start_time
         aml_run_logger.log("Initial training execution time", execution_time)
@@ -301,6 +308,8 @@ def train_model(img_path,
             validation_data=valid_gen,
             validation_steps=len(valid_gen.classes) / batch_size,
             class_weight=wts,
+            use_multiprocessing=True,
+            workers=cpu_count,
             callbacks=callbacks)
         execution_time = time.perf_counter() - start_time
         aml_run_logger.log("Initial training execution time", execution_time)
@@ -328,6 +337,8 @@ def train_model(img_path,
                 validation_data=valid_gen,
                 validation_steps=len(valid_gen.classes) / batch_size,
                 class_weight=wts,
+                use_multiprocessing=True,
+                workers=cpu_count,
                 callbacks=callbacks)
             execution_time = time.perf_counter() - start_time
             aml_run_logger.log("Second training execution time", execution_time)
@@ -345,6 +356,8 @@ def train_model(img_path,
                 validation_data=valid_gen,
                 validation_steps=len(valid_gen.classes) / batch_size,
                 class_weight=wts,
+                use_multiprocessing=True,
+                workers=cpu_count,
                 callbacks=callbacks)
             execution_time = time.perf_counter() - start_time
             aml_run_logger.log("Second training execution time", execution_time)
@@ -511,10 +524,12 @@ if __name__ == '__main__':
         FLAGS)
     logger.info('Model name {}'.format(model_name))
     shared_data_path = os.path.join(os.environ['AZUREML_NATIVE_SHARE_DIRECTORY'])
-    if load_file_from_blob("images", "image_set.zip",
-                       os.path.join(shared_data_path, "image_set.zip")) is True:
-        unzip_file(os.path.join(shared_data_path, "image_set.zip"), shared_data_path)
-    FLAGS.image_dir = os.path.join(shared_data_path, "image_set")
+    container_name = "data"
+    zip_file_name = "output_all.zip"
+    data_dir = "data"
+    load_file_from_blob(container_name, zip_file_name, os.path.join(shared_data_path, zip_file_name))
+    unzip_file(os.path.join(os.path.join(shared_data_path, zip_file_name)),os.path.join(shared_data_path,data_dir))
+    FLAGS.image_dir = os.path.join(shared_data_path,data_dir,zip_file_name.split(".")[0])
     trained_model, weights, training_data, im_sz = train_model(
         FLAGS.image_dir,
         FLAGS.model_type,
