@@ -76,11 +76,13 @@ def create_image_lists(image_dir, testing_percentage, validation_percentage):
             logger.warning('No files found')
             continue
         if len(file_list) < 20:
-            logger.warning('WARNING: Folder has less than 20 images, which may cause issues.')
-        elif len(file_list) > MAX_NUM_IMAGES_PER_CLASS:
+            logger.warning('WARNING: Folder has less than 20 images, which may cause issues. Skipping.')
+            continue
+        elif len(file_list) > FLAGS.max_per_file:
             logger.warning(
-                'WARNING: Folder {} has more than {} images. Some images will never be selected.'
-                    .format(dir_name, MAX_NUM_IMAGES_PER_CLASS))
+                'WARNING: Folder {} has more than {} images. Pruning.'
+                    .format(dir_name, FLAGS.max_per_file))
+            file_list = file_list[:FLAGS.max_per_file]
         label_name = re.sub(r'[^a-z0-9]+', ' ', dir_name.lower())
         training_images = []
         testing_images = []
@@ -180,5 +182,11 @@ if __name__ == '__main__':
         help='Percentage of images to use in validation.')
     parser.add_argument(
         '--seed', type=float, default=1337, help='Random seed.')
+    parser.add_argument(
+        '--max_per_file',
+        type=int,
+        default=MAX_NUM_IMAGES_PER_CLASS,
+        help='Limit the maximum number of images in a given class'
+    )
     FLAGS, _ = parser.parse_known_args()
     divide_images()
