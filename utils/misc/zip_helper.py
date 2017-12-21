@@ -4,11 +4,12 @@ import os
 
 def unzip_file(filepath, destination):
     print("Unzipping {0} to {1}".format(filepath, destination))
-    if os.path.isdir(destination):
+    if os.path.exists(destination):
         print("Unzipped directory {} already exists, skipping unzipping.".format(destination))
-        # print("Unzipping {0} to {1}".format(filepath, destination))
+        return False
     else:
         unpack_archive(filepath, destination)
+        return True
     # with zipfile.ZipFile(filepath, "r") as zip_ref:
     #     # print(zip_ref.namelist())
     #     # for name in zip_ref.namelist():

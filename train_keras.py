@@ -241,8 +241,6 @@ def train_model(img_path,
             wts[i] = 1. - float(freqs[i]) / tot
     else:
         wts = None
-        # wts = dict(
-        # zip(range(train_gen.num_classes), [1.] * train_gen.num_classes))
     logger.info('Using class weights {}'.format(wts))
 
     # Add new dense layers and softmax
@@ -275,16 +273,17 @@ def train_model(img_path,
         optimizers[0], learning_rates[0]))
     logger.info('Use {} GPUs'.format(gpu))
     aml_run_logger.log("cpu count", cpu_count)
-
+    history = {}
 
     if gpu > 1:
         gpu_model = multi_gpu_model(model, gpus=gpu)
         batch_size = batch_size * gpu
         gpu_model.compile(
             optimizer=optimizer_types[optimizers[0]](learning_rates[0]),
-            loss='categorical_crossentropy')
+            loss='categorical_crossentropy',
+            metrics=['accuracy'])
         start_time = time.perf_counter()
-        gpu_model.fit_generator(
+        history = gpu_model.fit_generator(
             train_gen,
             steps_per_epoch=len(train_gen.classes) / batch_size,
             epochs=epochs[0],
@@ -295,13 +294,13 @@ def train_model(img_path,
             workers=cpu_count,
             callbacks=callbacks)
         execution_time = time.perf_counter() - start_time
-        aml_run_logger.log("Initial training execution time", execution_time)
     else:
         model.compile(
             optimizer=optimizer_types[optimizers[0]](learning_rates[0]),
-            loss='categorical_crossentropy')
+            loss='categorical_crossentropy',
+            metrics=['accuracy'])
         start_time = time.perf_counter()
-        model.fit_generator(
+        history = model.fit_generator(
             train_gen,
             steps_per_epoch=len(train_gen.classes) / batch_size,
             epochs=epochs[0],
@@ -312,7 +311,11 @@ def train_model(img_path,
             workers=cpu_count,
             callbacks=callbacks)
         execution_time = time.perf_counter() - start_time
-        aml_run_logger.log("Initial training execution time", execution_time)
+    aml_run_logger.log("Initial training execution time", execution_time)
+    aml_run_logger.log("Initial training loss", history.history["loss"])
+    aml_run_logger.log("Initial training accuracy", history.history["acc"])
+    aml_run_logger.log("Initial training validation loss", history.history["val_loss"])
+    aml_run_logger.log("Initial training validation accuracy", history.history["val_acc"])
 
     num_to_unfreeze = -1 * (len(dense_layers) + 1)
     for layer in model.layers[:num_to_unfreeze]:
@@ -326,11 +329,12 @@ def train_model(img_path,
             gpu_model = multi_gpu_model(model, gpus=gpu)
             gpu_model.compile(
                 optimizer=optimizer_types[optimizer](lr),
-                loss='categorical_crossentropy')
+                loss='categorical_crossentropy',
+                metrics=['accuracy'])
             # we train our model again (this time fine-tuning the top 2 inception blocks
             # alongside the top Dense layers
             start_time = time.perf_counter()
-            gpu_model.fit_generator(
+            history = gpu_model.fit_generator(
                 train_gen,
                 steps_per_epoch=len(train_gen.classes) / batch_size,
                 epochs=epoch,
@@ -341,11 +345,11 @@ def train_model(img_path,
                 workers=cpu_count,
                 callbacks=callbacks)
             execution_time = time.perf_counter() - start_time
-            aml_run_logger.log("Second training execution time", execution_time)
         else:
             model.compile(
                 optimizer=optimizer_types[optimizer](lr),
-                loss='categorical_crossentropy')
+                loss='categorical_crossentropy',
+                metrics=['accuracy'])
             # we train our model again (this time fine-tuning the top 2 inception blocks
             # alongside the top Dense layers
             start_time = time.perf_counter()
@@ -360,11 +364,15 @@ def train_model(img_path,
                 workers=cpu_count,
                 callbacks=callbacks)
             execution_time = time.perf_counter() - start_time
-            aml_run_logger.log("Second training execution time", execution_time)
+        aml_run_logger.log("Second training loss", history.history["loss"])
+        aml_run_logger.log("Second training accuracy", history.history["acc"])
+        aml_run_logger.log("Second training validation loss", history.history["val_loss"])
+        aml_run_logger.log("Second training validation accuracy", history.history["val_acc"])
+        aml_run_logger.log("Second training execution time", execution_time)
     return model, wts, train_gen, img_size
 
 
-def evaluate(model_root, model, images, image_size, num_batches, seed, top_n=None):
+def evaluate(model_root, model, images, image_size, seed, top_n=None):
     imagegen = image.ImageDataGenerator()
     test_gen = image.DirectoryIterator(
         os.path.join(images, 'testing'),
@@ -376,8 +384,7 @@ def evaluate(model_root, model, images, image_size, num_batches, seed, top_n=Non
     classes = [x[0] for x in sorted(test_gen.class_indices.items(), key=lambda x: x[1])]
     metrics_path = model_root + "_metrics.csv"
     cm_path = model_root + "_cm.png"
-    metrics, _, _ = score_keras.evaluate_model(model, test_gen, classes, num_batches,
-                                               metrics_path, cm_path, top_n=top_n)
+    metrics, _, _ = score_keras.evaluate_model(model, test_gen, classes, metrics_path, cm_path, top_n=top_n)
     class_map = model_root + "_classes.csv"
     try:
         with open(class_map, 'w', encoding='utf-8') as cmfp:
@@ -508,11 +515,6 @@ if __name__ == '__main__':
         default=False,
         help='Score the model after training using score_keras.')
     parser.add_argument(
-        '--num_batches_to_score',
-        type=int,
-        default=10,
-        help='If scoring, how many batches to score.')
-    parser.add_argument(
         '--gpu',
         type=int,
         default=1,
@@ -573,7 +575,6 @@ if __name__ == '__main__':
     metrics = None
     if FLAGS.score:
         logger.info('Model and description saved. Evaluating and scoring.')
-        classes, cm_path, metrics = evaluate(model_root, trained_model, FLAGS.image_dir, im_sz,
-            FLAGS.num_batches_to_score, FLAGS.seed, top_n=3)
+        classes, cm_path, metrics = evaluate(model_root, trained_model, FLAGS.image_dir, im_sz, FLAGS.seed, top_n=3)
     write_model_desc(FLAGS, FLAGS.model_dir, model_name, classes, weights,
                         training_data, cm_path, metrics)
