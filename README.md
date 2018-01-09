@@ -30,7 +30,7 @@ There are three scripts in this module - one for splitting your image data, one 
 
 ## `train_keras.py`
 
-- `python -m scripts.train_keras --image_dir data/my_split --model_type InceptionV3 --batch_size 8 --learning_rates 0.001 0.001 0.0005 --epochs 1 1 1 --use_weights True --score True --num_batches_to_score 20 --model_dir ./models --gpu 1`
+- `python -m scripts.train_keras --image_dir data/my_split --model_type InceptionV3 --batch_size 8 --learning_rates 0.001 0.001 0.0005 --epochs 1 1 1 --use_weights True --score True --model_dir ./models --gpu 1`
    - Trains a new model based on a pre-trained InceptionV3 instance.
    - Since `output_model` is not specified, the name is imputed from the hyperparameters.
    - Uses class-weights based on inverse class distribution.

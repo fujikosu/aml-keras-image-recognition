@@ -3,7 +3,8 @@ Scores an existing model using one or more batches of images from a testing set.
 
 Outputs a confusion matrix, and precision, recall, F-score and support metrics.
 '''
-
+import matplotlib
+matplotlib.use('Agg')
 from keras.preprocessing import image
 from keras.models import load_model
 import numpy as np
@@ -14,6 +15,8 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import confusion_matrix, precision_recall_fscore_support
 import argparse
 import logging
+from keras.metrics import top_k_categorical_accuracy
+from keras import backend as K
 
 logger = logging.getLogger('score_keras')
 logger.setLevel(logging.INFO)
@@ -24,7 +27,7 @@ FLAGS = None
 def plot_confusion_matrix(cm, classes, outfile,
                           title='Confusion Matrix',
                           cmap=plt.cm.BuPu,
-                          size_inches=6):
+                          size_inches=11):
     """
     Plots the confusion matrix and stores into outfile.
     """
@@ -54,7 +57,7 @@ def load_model_and_images(model_file, image_dir, seed):
     testpath = image_dir
 
     imagegen = image.ImageDataGenerator()
-    test_gen = image.DirectoryIterator(testpath, imagegen, target_size=(224, 224), seed=seed, shuffle=True)
+    test_gen = image.DirectoryIterator(testpath, imagegen, target_size=(299, 299), seed=seed, shuffle=True)
 
     model = load_model(model_file)
     # Get classes sorted by their value
@@ -62,9 +65,10 @@ def load_model_and_images(model_file, image_dir, seed):
 
     return model, test_gen, classes
 
-def evaluate_model(model, image_gen, classes, num_batches, output_metrics, output_image, top_n=None, beta=1.):
-    for batch_num in range(num_batches):
-        logger.info('Processing batch %d of %d' % (batch_num, num_batches))
+def evaluate_model(model, image_gen, classes, output_metrics, output_image, top_n=None, beta=1.):
+    # Iterate all batches for testing
+    for batch_num in range(len(image_gen)):
+        logger.info('Processing batch %d of %d' % (batch_num, len(image_gen)))
         cur_x, cur_y = image_gen.next()
         cur_y_pred = model.predict(cur_x)
         if batch_num == 0:
@@ -89,22 +93,9 @@ def evaluate_model(model, image_gen, classes, num_batches, output_metrics, outpu
             'Support': support
         }
         if top_n:
-            top_idx = len(classes) - top_n
-            y_p_ordered = np.argpartition(y_pred, top_idx, axis=1)
-            cnt = 0
-            # Is there a numpy way to do this without iterating?
-            # I was looking at np.where, but can't figure out how to 
-            #  broadcast actuals against predictions
-            for actual, pred in zip(y_v, y_p_ordered):
-                if actual in pred[top_idx:]:
-                    # print('Found {} at index {} of {}'.format(actual, np.where(pred==actual)[0], pred))
-                    cnt += 1
-                #else:
-                    # print('Failed to find {} before {}, found at index {} of {}'.format(actual, top_idx, np.where(pred==actual)[0], pred))
-            tot = len(y_v)
-            logger.info('Top {}: {} of {}'.format(top_n, cnt, tot))
-            top_n_value = float(cnt) / tot
-            metrics['Top_{}'.format(top_n)] = top_n_value
+            top_n_value = K.get_value(top_k_categorical_accuracy(y_actual, y_pred, k=top_n))
+            metrics['Top_{}'.format(top_n)] = float(top_n_value)
+            
             logger.info('Precision: {}, Recall: {}, F-Score: {}, Support: {}, Top_{}: {}'\
                 .format(precision, recall, fscore, support, top_n, top_n_value))
         else:
@@ -149,11 +140,6 @@ if __name__ == '__main__':
         default=None,
         help='Path for output metrics. Defaults to (model_dir + model_name + "_metrics.csv")')
     parser.add_argument(
-        '--num_batches',
-        type=int,
-        default=10,
-        help='Number of batches to iterate for testing. Defaults to 10.')
-    parser.add_argument(
         '--seed',
         type=int,
         default=1337,
@@ -168,4 +154,4 @@ if __name__ == '__main__':
     m, i, c = load_model_and_images(model_path, img_path, FLAGS.seed)
     logger.info('Loaded model from {}'.format(model_path))
     logger.info('Evaluating model using images from {}'.format(img_path))
-    evaluate_model(m, i, c, FLAGS.num_batches, metrics_path, cm_path, top_n=1)
+    evaluate_model(m, i, c, metrics_path, cm_path, top_n=1)
