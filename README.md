@@ -17,9 +17,9 @@ run `train_test_split.py` like below on your dataset and one whole dataset is sp
 
 `python -m scripts.train_test_split --image_dir data/my_photos --output_dir data/my_split --pct_test 10 --pct_validation 20 --seed 1337`
 
-Then compress them into one zip file and name it as "image_dataset.zip".
+Then compress them into one zip file and name it as *image_dataset.zip*.
 
-Store it under "data" container in Azure Blob Storage and add the following references to your .runconfig file to load dataset into your Azure Machine Learning compute target automatically for your training:
+Store it under *data* container in Azure Blob Storage and add the following references to your .runconfig file to load dataset into your Azure Machine Learning compute target automatically for your training:
 
 ```
 EnvironmentVariables:
@@ -29,7 +29,7 @@ EnvironmentVariables:
 
 Run `train_keras.py` like below from Azure Machine Learning.
 
-`az ml experiment submit -c YOUR_VM_TARGET .\train_keras.py --gpu 2 --use_weights True --score True --learning_rates 0.001 0.0005 0.00002 --epochs 20 10 10 --model_type Xception --num_batches_to_score 100`
+`az ml experiment submit -c YOUR_VM_TARGET .\train_keras.py --gpu 2 --use_weights True --score True --learning_rates 0.001 0.0005 0.00002 --epochs 20 10 10 --model_type Xception`
 
 All of run histories, logs and trained models are managed by Azure Machine Learning Services.
 
