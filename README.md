@@ -46,7 +46,7 @@ There are three scripts in this module - one for splitting your image data, one 
    - Trains a Keras model for image recognition based on Transfer Learning. See [Keras Applications](https://keras.io/applications/) for a sense of the pre-built models that are available. 
    - As new models are launched or you develop/find them, it's easy to add them to this script and use them as base models for your own transfer-learned versions.
    - Models are automatically named based on the hyperparameters given, and can also have a timestamp appended. However, this can be overridden if needed.
-   - Data augmentation flags are supported, and include the methods supported by Keras (flipping horizontally and vertically, rotation, zooming, and shearing).
+   - Data augmentation flags are supported, and include the methods supported by Keras (flipping horizontally, vertically, rotation, zooming, and shearing).
    - You can bundle training and scoring if desired.
    - As part of the training, a Markdown file describing the model is produced. If you are also doing scoring, details on the performance will also be included.
 - `score_keras.py`

@@ -61,12 +61,12 @@ activations = {
 }
 
 optimizer_types = {
-    'SGD': lambda lr: SGD(lr=lr), 
-    'RMSprop': lambda lr: RMSprop(lr=lr), 
-    'Adagrad': lambda lr: Adagrad(lr=lr), 
-    'Adadelta': lambda lr: Adadelta(lr=lr), 
-    'Adam': lambda lr: Adam(lr=lr), 
-    'Adamax': lambda lr: Adamax(lr=lr), 
+    'SGD': lambda lr: SGD(lr=lr),
+    'RMSprop': lambda lr: RMSprop(lr=lr),
+    'Adagrad': lambda lr: Adagrad(lr=lr),
+    'Adadelta': lambda lr: Adadelta(lr=lr),
+    'Adam': lambda lr: Adam(lr=lr),
+    'Adamax': lambda lr: Adamax(lr=lr),
     'Nadam': lambda lr: Nadam(lr=lr)
 }
 
@@ -88,7 +88,8 @@ model_types = {
         'img_size': 299
     },
     'InceptionResNetV2': {
-        'model': lambda: InceptionResNetV2(weights='imagenet', include_top=False),
+        'model':
+        lambda: InceptionResNetV2(weights='imagenet', include_top=False),
         'img_size': 299
     }
 }
@@ -99,8 +100,10 @@ pooling_types = {
     'none': lambda x: x
 }
 
+
 def build_model_name(options):
-    ts = '' if not options.add_timestamp_suffix else datetime.now().strftime('_%Y%m%dT%H%M%S')
+    ts = '' if not options.add_timestamp_suffix else datetime.now().strftime(
+        '_%Y%m%dT%H%M%S')
     mn = options.model_type
     topology = options.pooling + '-' + '-'.join(map(str, options.dense_layers))
     af = options.activation
@@ -108,10 +111,12 @@ def build_model_name(options):
     lrs = '-'.join([str(lr)[2:] for lr in options.learning_rates])
     wts = 'wts' if options.use_weights else 'nowts'
     epochs = '-'.join(map(str, options.epochs))
-    return '{}_{}_{}_opts-{}_lr{}_{}_e{}{}'.format(mn, topology, af, opts, lrs, wts, epochs, ts)
+    return '{}_{}_{}_opts-{}_lr{}_{}_e{}{}'.format(mn, topology, af, opts, lrs,
+                                                   wts, epochs, ts)
 
 
-def write_model_desc(options, model_path, model_name, classes, weights, train_gen, cm_path, metrics):
+def write_model_desc(options, model_path, model_name, classes, weights,
+                     train_gen, cm_path, metrics):
     desc_file = os.path.join(model_path, model_name + '_desc.md')
     logger.info('Writing model description to {}'.format(desc_file))
     with open(desc_file, 'w', encoding='utf-8') as fp:
@@ -137,20 +142,23 @@ def write_model_desc(options, model_path, model_name, classes, weights, train_ge
         fp.write('\n\n# Training Details\n\n')
         fp.write(
             'We go through an initial training with frozen weights for all layers of the base model, using {} with a learning rate of {}, for {} epochs.\n\n'.
-            format(options.optimizers[0], options.learning_rates[0], options.epochs[0]))
+            format(options.optimizers[0], options.learning_rates[0],
+                   options.epochs[0]))
         fp.write(
             'After that, we unfreeze all layers and retrain {} times, using the following optimizers/learning rates/epochs:\n\n'.
             format(len(options.epochs) - 1))
         for opt, lr, epoch \
                 in zip(options.optimizers[1:], options.learning_rates[1:], options.epochs[1:]):
-            fp.write('- Using {} with Learning Rate {} for {} epochs'.format(opt, lr, epoch))
+            fp.write('- Using {} with Learning Rate {} for {} epochs'.format(
+                opt, lr, epoch))
         fp.write('\n\n{} training images were used in {} classes.'.format(
             len(train_gen.classes), train_gen.num_classes))
         if cm_path or metrics:
             fp.write('\n\n# Scoring and Evaluation\n\n')
             if cm_path:
                 fp.write('### Confusion Matrix:\n\n')
-                fp.write('![Confusion Matrix](./{})\n\n'.format(os.path.basename(cm_path)))
+                fp.write('![Confusion Matrix](./{})\n\n'.format(
+                    os.path.basename(cm_path)))
             if metrics:
                 logger.info('Metrics:')
                 logger.info(metrics)
@@ -164,23 +172,29 @@ def write_model_desc(options, model_path, model_name, classes, weights, train_ge
                         #vals_by_class = dict(zip(classes, vals))
                         #aml_run_logger.log(metric, vals_by_class)
                         for idx in range(len(vals)):
-                            fp.write('    - {}: {}\n'.format(classes[idx], vals[idx]))
+                            fp.write('    - {}: {}\n'.format(
+                                classes[idx], vals[idx]))
                     else:
                         fp.write('- {}: {}\n'.format(metric, metrics[metric]))
                         try:
                             aml_run_logger.log(metric, metrics[metric])
                         except:
-                            logger.warn('Failed to log metric {} to AzureML'.format(metric))
+                            logger.warn(
+                                'Failed to log metric {} to AzureML'.format(
+                                    metric))
 
-def load_images(img_path, flip, rotate, zoom, shear, batch_size, img_size,
-                seed):
+
+def load_images(img_path, horizontal_flip, vertical_flip, rotate, zoom, shear,
+                batch_size, img_size, seed):
     logger.info(
-        'Loading training data from {}. {}, rotate={}, zoom={}, shear={}. Batch size={}. Image size={}.'.
-        format(img_path, 'flip' if flip else 'no flip', rotate, zoom, shear,
+        'Loading training data from {}. {}, {}, rotate={}, zoom={}, shear={}. Batch size={}. Image size={}.'.
+        format(img_path, 'horizontal flip'
+               if horizontal_flip else 'no horizontal flip', 'vertical flip'
+               if vertical_flip else 'no vertical flip', rotate, zoom, shear,
                batch_size, img_size))
     training = image.ImageDataGenerator(
-        horizontal_flip=flip,
-        vertical_flip=flip,
+        horizontal_flip=horizontal_flip,
+        vertical_flip=vertical_flip,
         rotation_range=rotate,
         zoom_range=zoom,
         shear_range=shear)
@@ -203,7 +217,8 @@ def load_images(img_path, flip, rotate, zoom, shear, batch_size, img_size,
 def train_model(img_path,
                 model_type,
                 tf_log_dir,
-                flip=False,
+                horizontal_flip=False,
+                vertical_flip=False,
                 rotate=0.,
                 zoom=0.,
                 shear=0.,
@@ -230,7 +245,8 @@ def train_model(img_path,
     model_details = model_types[model_type]
     base_model = model_details['model']()
     img_size = model_details['img_size']
-    train_gen, valid_gen = load_images(img_path, flip, rotate, zoom, shear,
+    train_gen, valid_gen = load_images(img_path, horizontal_flip,
+                                       vertical_flip, rotate, zoom, shear,
                                        batch_size, img_size, seed)
 
     if use_weights:
@@ -314,8 +330,10 @@ def train_model(img_path,
     aml_run_logger.log("Initial training execution time", execution_time)
     aml_run_logger.log("Initial training loss", history.history["loss"])
     aml_run_logger.log("Initial training accuracy", history.history["acc"])
-    aml_run_logger.log("Initial training validation loss", history.history["val_loss"])
-    aml_run_logger.log("Initial training validation accuracy", history.history["val_acc"])
+    aml_run_logger.log("Initial training validation loss",
+                       history.history["val_loss"])
+    aml_run_logger.log("Initial training validation accuracy",
+                       history.history["val_acc"])
 
     num_to_unfreeze = -1 * (len(dense_layers) + 1)
     for layer in model.layers[:num_to_unfreeze]:
@@ -323,8 +341,10 @@ def train_model(img_path,
     for layer in model.layers[num_to_unfreeze:]:
         layer.trainable = True
 
-    for optimizer, lr, epoch in zip(optimizers[1:], learning_rates[1:], epochs[1:]):
-        logger.info('Training {} epochs using Optimizer {} and LR {}'.format(epoch, optimizer, lr))
+    for optimizer, lr, epoch in zip(optimizers[1:], learning_rates[1:],
+                                    epochs[1:]):
+        logger.info('Training {} epochs using Optimizer {} and LR {}'.format(
+            epoch, optimizer, lr))
         if gpu > 1:
             gpu_model = multi_gpu_model(model, gpus=gpu)
             gpu_model.compile(
@@ -366,8 +386,10 @@ def train_model(img_path,
             execution_time = time.perf_counter() - start_time
         aml_run_logger.log("Second training loss", history.history["loss"])
         aml_run_logger.log("Second training accuracy", history.history["acc"])
-        aml_run_logger.log("Second training validation loss", history.history["val_loss"])
-        aml_run_logger.log("Second training validation accuracy", history.history["val_acc"])
+        aml_run_logger.log("Second training validation loss",
+                           history.history["val_loss"])
+        aml_run_logger.log("Second training validation accuracy",
+                           history.history["val_acc"])
         aml_run_logger.log("Second training execution time", execution_time)
     return model, wts, train_gen, img_size
 
@@ -381,10 +403,14 @@ def evaluate(model_root, model, images, image_size, seed, top_n=None):
         seed=seed,
         shuffle=True)
     # Get classes sorted by their value
-    classes = [x[0] for x in sorted(test_gen.class_indices.items(), key=lambda x: x[1])]
+    classes = [
+        x[0]
+        for x in sorted(test_gen.class_indices.items(), key=lambda x: x[1])
+    ]
     metrics_path = model_root + "_metrics.csv"
     cm_path = model_root + "_cm.png"
-    metrics, _, _ = score_keras.evaluate_model(model, test_gen, classes, metrics_path, cm_path, top_n=top_n)
+    metrics, _, _ = score_keras.evaluate_model(
+        model, test_gen, classes, metrics_path, cm_path, top_n=top_n)
     class_map = model_root + "_classes.csv"
     try:
         with open(class_map, 'w', encoding='utf-8') as cmfp:
@@ -401,11 +427,18 @@ if __name__ == '__main__':
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument(
-        '--flip',
+        '--horizontal_flip',
         type=strtobool,
         default=False,
         help=
-        'Whether to augment training images with flips (horiz and vert). Defaults to False.'
+        'Whether to augment training images with horizontal flip. Defaults to False.'
+    )
+    parser.add_argument(
+        '--vertical_flip',
+        type=strtobool,
+        default=False,
+        help=
+        'Whether to augment training images with vertical flip. Defaults to False.'
     )
     parser.add_argument(
         '--rotate',
@@ -433,24 +466,29 @@ if __name__ == '__main__':
         default='InceptionV3',
         choices=model_types.keys(),
         help=
-        'Type of pre-trained model to use. See https://keras.io/applications/. Defaults to InceptionV3.')
+        'Type of pre-trained model to use. See https://keras.io/applications/. Defaults to InceptionV3.'
+    )
     parser.add_argument(
         '--model_dir',
         type=str,
         default='./outputs/models',
         help=
-        'model_dir + output_model + ".h5" == full output model file path. Defaults to ./models.')
+        'model_dir + output_model + ".h5" == full output model file path. Defaults to ./models.'
+    )
     parser.add_argument(
         '--output_model',
         default=None,
         type=str,
         help=
-        'Filename (sans prefix) for saved model. Defaults to structured combination of training parameters.')
+        'Filename (sans prefix) for saved model. Defaults to structured combination of training parameters.'
+    )
     parser.add_argument(
         '--add_timestamp_suffix',
         default=False,
         type=strtobool,
-        help='Turn on/off the timestamp suffix on model (and desc, and cm, and metrics). Defaults to False.')
+        help=
+        'Turn on/off the timestamp suffix on model (and desc, and cm, and metrics). Defaults to False.'
+    )
     parser.add_argument(
         '--batch_size',
         type=int,
@@ -483,7 +521,8 @@ if __name__ == '__main__':
         type=str,
         nargs='+',
         default=['RMSprop', 'SGD'],
-        help='Optimzers to use for training. Defaults to RMSProp for initial training and SGD for subsequent.'
+        help=
+        'Optimzers to use for training. Defaults to RMSProp for initial training and SGD for subsequent.'
     )
     parser.add_argument(
         '--learning_rates',
@@ -525,18 +564,24 @@ if __name__ == '__main__':
     model_name = FLAGS.output_model if FLAGS.output_model else build_model_name(
         FLAGS)
     logger.info('Model name {}'.format(model_name))
-    shared_data_path = os.path.join(os.environ['AZUREML_NATIVE_SHARE_DIRECTORY'])
+    shared_data_path = os.path.join(
+        os.environ['AZUREML_NATIVE_SHARE_DIRECTORY'])
     container_name = "data"
     zip_file_name = "output_all.zip"
     data_dir = "data"
-    load_file_from_blob(container_name, zip_file_name, os.path.join(shared_data_path, zip_file_name))
-    unzip_file(os.path.join(os.path.join(shared_data_path, zip_file_name)),os.path.join(shared_data_path,data_dir))
-    FLAGS.image_dir = os.path.join(shared_data_path,data_dir,zip_file_name.split(".")[0])
+    load_file_from_blob(container_name, zip_file_name,
+                        os.path.join(shared_data_path, zip_file_name))
+    unzip_file(
+        os.path.join(os.path.join(shared_data_path, zip_file_name)),
+        os.path.join(shared_data_path, data_dir))
+    FLAGS.image_dir = os.path.join(shared_data_path, data_dir,
+                                   zip_file_name.split(".")[0])
     trained_model, weights, training_data, im_sz = train_model(
         FLAGS.image_dir,
         FLAGS.model_type,
         FLAGS.tensorflow_logs,
-        flip=FLAGS.flip,
+        horizontal_flip=FLAGS.horizontal_flip,
+        vertical_flip=FLAGS.vertical_flip,
         rotate=FLAGS.rotate,
         zoom=FLAGS.zoom,
         shear=FLAGS.shear,
@@ -556,25 +601,33 @@ if __name__ == '__main__':
     logger.info('Saving model to {}'.format(model_file))
     os.makedirs(os.path.dirname(model_file), exist_ok=True)
     trained_model.save(model_file)
-    aml_run_logger.log("hyperparameters", {
-        "flip": FLAGS.flip,
-        "rotate": FLAGS.rotate,
-        "zoom": FLAGS.zoom,
-        "shear": FLAGS.shear,
-        "batch_size": FLAGS.batch_size,
-        "pooling": FLAGS.pooling,
-        "activation": FLAGS.activation,
-        "dense_layers": FLAGS.dense_layers,
-        "optimizers": FLAGS.optimizers,
-        "learning_rates": FLAGS.learning_rates,
-        "epochs": FLAGS.epochs,
-        "weights": weights
-    })
+    aml_run_logger.log(
+        "hyperparameters", {
+            "horizontal_flip": FLAGS.horizontal_flip,
+            "vertical_flip": FLAGS.vertical_flip,
+            "rotate": FLAGS.rotate,
+            "zoom": FLAGS.zoom,
+            "shear": FLAGS.shear,
+            "batch_size": FLAGS.batch_size,
+            "pooling": FLAGS.pooling,
+            "activation": FLAGS.activation,
+            "dense_layers": FLAGS.dense_layers,
+            "optimizers": FLAGS.optimizers,
+            "learning_rates": FLAGS.learning_rates,
+            "epochs": FLAGS.epochs,
+            "weights": weights
+        })
     classes = None
     cm_path = None
     metrics = None
     if FLAGS.score:
         logger.info('Model and description saved. Evaluating and scoring.')
-        classes, cm_path, metrics = evaluate(model_root, trained_model, FLAGS.image_dir, im_sz, FLAGS.seed, top_n=3)
+        classes, cm_path, metrics = evaluate(
+            model_root,
+            trained_model,
+            FLAGS.image_dir,
+            im_sz,
+            FLAGS.seed,
+            top_n=3)
     write_model_desc(FLAGS, FLAGS.model_dir, model_name, classes, weights,
-                        training_data, cm_path, metrics)
+                     training_data, cm_path, metrics)
