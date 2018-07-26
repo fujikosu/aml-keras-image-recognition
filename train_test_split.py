@@ -34,13 +34,14 @@ import glob
 from shutil import copyfile
 import logging
 
-logger = logging.getLogger('score_keras')
+logger = logging.getLogger('train_test_split')
 logger.setLevel(logging.INFO)
 logger.addHandler(logging.StreamHandler())
 
 FLAGS = None
 
 MAX_NUM_IMAGES_PER_CLASS = 2**27 - 1  # ~134M
+
 
 def create_image_lists(image_dir, testing_percentage, validation_percentage):
     """Builds a list of training images from the file system.
@@ -62,13 +63,17 @@ def create_image_lists(image_dir, testing_percentage, validation_percentage):
         logger.error("Image directory '" + image_dir + "' not found.")
         return None
     result = {}
-    sub_dirs = [os.path.basename(x) for x in glob.glob(image_dir + '/*') if os.path.isdir(x)]
+    sub_dirs = [
+        os.path.basename(x) for x in glob.glob(image_dir + '/*')
+        if os.path.isdir(x)
+    ]
     # The root directory comes first, so skip it.
     for sub_dir in sub_dirs:
         extensions = ['jpg', 'jpeg', 'JPG', 'JPEG']
         file_list = []
         dir_name = os.path.basename(sub_dir)
-        logger.info("Looking for images in '{}'".format(os.path.join(image_dir, dir_name)))
+        logger.info("Looking for images in '{}'".format(
+            os.path.join(image_dir, dir_name)))
         for extension in extensions:
             file_glob = os.path.join(image_dir, dir_name, '*.' + extension)
             file_list.extend(glob.glob(file_glob))
@@ -76,12 +81,14 @@ def create_image_lists(image_dir, testing_percentage, validation_percentage):
             logger.warning('No files found')
             continue
         if len(file_list) < 20:
-            logger.warning('WARNING: Folder has less than 20 images, which may cause issues. Skipping.')
+            logger.warning(
+                'WARNING: Folder has less than 20 images, which may cause issues. Skipping.'
+            )
             continue
         elif len(file_list) > FLAGS.max_per_file:
             logger.warning(
-                'WARNING: Folder {} has more than {} images. Pruning.'
-                    .format(dir_name, FLAGS.max_per_file))
+                'WARNING: Folder {} has more than {} images. Pruning.'.format(
+                    dir_name, FLAGS.max_per_file))
             file_list = file_list[:FLAGS.max_per_file]
         label_name = re.sub(r'[^a-z0-9]+', ' ', dir_name.lower())
         training_images = []
@@ -104,9 +111,9 @@ def create_image_lists(image_dir, testing_percentage, validation_percentage):
             # probability value that we use to assign it.
             hash_name_hashed = hashlib.sha1(
                 hash_name.encode(errors='replace')).hexdigest()
-            percentage_hash = ((int(hash_name_hashed, 16) %
-                                (MAX_NUM_IMAGES_PER_CLASS + 1)) *
-                               (100.0 / MAX_NUM_IMAGES_PER_CLASS))
+            percentage_hash = (
+                (int(hash_name_hashed, 16) % (MAX_NUM_IMAGES_PER_CLASS + 1)) *
+                (100.0 / MAX_NUM_IMAGES_PER_CLASS))
             if percentage_hash < validation_percentage:
                 validation_images.append(base_name)
             elif percentage_hash < (
@@ -122,11 +129,13 @@ def create_image_lists(image_dir, testing_percentage, validation_percentage):
         }
     return result
 
+
 def mkdir(root, dirname):
     path = os.path.join(root, dirname)
     if not os.path.exists(path):
         os.mkdir(path)
     return path
+
 
 def divide_images():
     img_dir = FLAGS.image_dir
@@ -136,13 +145,12 @@ def divide_images():
     image_lists = create_image_lists(img_dir, testing_pct, validation_pct)
     class_count = len(image_lists.keys())
     if class_count == 0:
-        logger.error('No valid folders of images found at ' +
-                         FLAGS.image_dir)
+        logger.error('No valid folders of images found at ' + FLAGS.image_dir)
         return -1
     if class_count == 1:
         logger.error('Only one valid folder of images found at ' +
-                         FLAGS.image_dir +
-                         ' - multiple classes are needed for classification.')
+                     FLAGS.image_dir +
+                     ' - multiple classes are needed for classification.')
         return -1
     mkdir('', out_dir)
     train_dir = mkdir(out_dir, 'training')
@@ -160,16 +168,21 @@ def divide_images():
         for img in image_lists[cl]['validation']:
             copyfile(os.path.join(indir, img), os.path.join(v_cl, img))
 
+
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description=__doc__,
-                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument(
         '--image_dir',
         type=str,
         required=True,
         help='Path to folders of labeled images.')
     parser.add_argument(
-        '--output_dir', type=str, required=True, help='Where to save the divided images.')
+        '--output_dir',
+        type=str,
+        required=True,
+        help='Where to save the divided images.')
     parser.add_argument(
         '--pct_test',
         type=int,
@@ -186,7 +199,6 @@ if __name__ == '__main__':
         '--max_per_file',
         type=int,
         default=MAX_NUM_IMAGES_PER_CLASS,
-        help='Limit the maximum number of images in a given class'
-    )
+        help='Limit the maximum number of images in a given class')
     FLAGS, _ = parser.parse_known_args()
     divide_images()
