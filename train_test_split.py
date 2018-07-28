@@ -33,6 +33,7 @@ import re
 import glob
 from shutil import copyfile
 import logging
+from pathlib import Path
 
 logger = logging.getLogger('train_test_split')
 logger.setLevel(logging.INFO)
@@ -59,24 +60,21 @@ def create_image_lists(image_dir, testing_percentage, validation_percentage):
     A dictionary containing an entry for each label subfolder, with images split
     into training, testing, and validation sets within each label.
   """
-    if not os.path.exists(image_dir):
-        logger.error("Image directory '" + image_dir + "' not found.")
+    image_dir_path = Path(image_dir)
+    if not image_dir_path.exists:
+        logger.error(
+            "Image directory '" + image_dir_path.name + "' not found.")
         return None
     result = {}
-    sub_dirs = [
-        os.path.basename(x) for x in glob.glob(image_dir + '/*')
-        if os.path.isdir(x)
-    ]
+    sub_dirs = [x for x in image_dir_path.iterdir() if x.is_dir()]
     # The root directory comes first, so skip it.
     for sub_dir in sub_dirs:
         extensions = ['jpg', 'jpeg', 'JPG', 'JPEG']
         file_list = []
-        dir_name = os.path.basename(sub_dir)
-        logger.info("Looking for images in '{}'".format(
-            os.path.join(image_dir, dir_name)))
+        dir_name = sub_dir.name
+        logger.info("Looking for images in '{}'".format(sub_dir))
         for extension in extensions:
-            file_glob = os.path.join(image_dir, dir_name, '*.' + extension)
-            file_list.extend(glob.glob(file_glob))
+            file_list.extend(sub_dir.glob('*.' + extension))
         if not file_list:
             logger.warning('No files found')
             continue
@@ -95,13 +93,13 @@ def create_image_lists(image_dir, testing_percentage, validation_percentage):
         testing_images = []
         validation_images = []
         for file_name in file_list:
-            base_name = os.path.basename(file_name)
+            base_name = Path(file_name).name
             # We want to ignore anything after '_nohash_' in the file name when
             # deciding which set to put an image in, the data set creator has a way of
             # grouping photos that are close variations of each other. For example
             # this is used in the plant disease data set to group multiple pictures of
             # the same leaf.
-            hash_name = re.sub(r'_nohash_.*$', '', file_name)
+            hash_name = re.sub(r'_nohash_.*$', '', str(file_name))
             # This looks a bit magical, but we need to decide whether this file should
             # go into the training, testing, or validation sets, and we want to keep
             # existing files in the same set even if more files are subsequently
@@ -111,9 +109,9 @@ def create_image_lists(image_dir, testing_percentage, validation_percentage):
             # probability value that we use to assign it.
             hash_name_hashed = hashlib.sha1(
                 hash_name.encode(errors='replace')).hexdigest()
-            percentage_hash = (
-                (int(hash_name_hashed, 16) % (MAX_NUM_IMAGES_PER_CLASS + 1)) *
-                (100.0 / MAX_NUM_IMAGES_PER_CLASS))
+            percentage_hash = ((int(hash_name_hashed, 16) %
+                                (MAX_NUM_IMAGES_PER_CLASS + 1)) *
+                               (100.0 / MAX_NUM_IMAGES_PER_CLASS))
             if percentage_hash < validation_percentage:
                 validation_images.append(base_name)
             elif percentage_hash < (
@@ -130,43 +128,42 @@ def create_image_lists(image_dir, testing_percentage, validation_percentage):
     return result
 
 
-def mkdir(root, dirname):
-    path = os.path.join(root, dirname)
-    if not os.path.exists(path):
-        os.mkdir(path)
-    return path
-
-
 def divide_images():
     img_dir = FLAGS.image_dir
     testing_pct = FLAGS.pct_test
     validation_pct = FLAGS.pct_validation
-    out_dir = FLAGS.output_dir
+    out_dir = Path(FLAGS.output_dir)
     image_lists = create_image_lists(img_dir, testing_pct, validation_pct)
     class_count = len(image_lists.keys())
     if class_count == 0:
         logger.error('No valid folders of images found at ' + FLAGS.image_dir)
         return -1
     if class_count == 1:
-        logger.error('Only one valid folder of images found at ' +
-                     FLAGS.image_dir +
-                     ' - multiple classes are needed for classification.')
+        logger.error(
+            'Only one valid folder of images found at ' + FLAGS.image_dir +
+            ' - multiple classes are needed for classification.')
         return -1
-    mkdir('', out_dir)
-    train_dir = mkdir(out_dir, 'training')
-    test_dir = mkdir(out_dir, 'testing')
-    val_dir = mkdir(out_dir, 'validation')
+    out_dir.mkdir()
+    train_dir = out_dir / 'training'
+    test_dir = out_dir / 'testing'
+    val_dir = out_dir / 'validation'
+    train_dir.mkdir()
+    test_dir.mkdir()
+    val_dir.mkdir()
     for cl in image_lists.keys():
-        td_cl = mkdir(train_dir, cl)
-        te_cl = mkdir(test_dir, cl)
-        v_cl = mkdir(val_dir, cl)
-        indir = os.path.join(img_dir, image_lists[cl]['dir'])
+        td_cl = train_dir / cl
+        te_cl = test_dir / cl
+        v_cl = val_dir / cl
+        td_cl.mkdir()
+        te_cl.mkdir()
+        v_cl.mkdir()
+        indir = Path(img_dir) / image_lists[cl]['dir']
         for img in image_lists[cl]['training']:
-            copyfile(os.path.join(indir, img), os.path.join(td_cl, img))
+            copyfile(indir / img, td_cl / img)
         for img in image_lists[cl]['testing']:
-            copyfile(os.path.join(indir, img), os.path.join(te_cl, img))
+            copyfile(indir / img, te_cl / img)
         for img in image_lists[cl]['validation']:
-            copyfile(os.path.join(indir, img), os.path.join(v_cl, img))
+            copyfile(indir / img, v_cl / img)
 
 
 if __name__ == '__main__':

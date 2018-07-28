@@ -15,25 +15,30 @@ This project uses Training dataset, Test dataset and Validation dataset.
 For preparing this directory structure,
 run `train_test_split.py` like below on your dataset and one whole dataset is split into 3 directories (training, testing, validation).
 
-`python -m scripts.train_test_split --image_dir data/my_photos --output_dir data/my_split --pct_test 10 --pct_validation 20 --seed 1337`
+`python -m train_test_split --image_dir data/my_photos --output_dir data/my_split --pct_test 10 --pct_validation 20 --seed 1337`
 
-Then compress them into one zip file and name it as *image_dataset.zip*.
+Then compress them into one zip file.
 
-Store it under *data* container in Azure Blob Storage and add the following references to your .runconfig file to load dataset into your Azure Machine Learning compute target automatically for your training:
+Store it under container in Azure Blob Storage and add the following references to your .runconfig file to load dataset into your Azure Machine Learning compute target automatically for your training:
 
 ```
 EnvironmentVariables:
   "STORAGE_ACCOUNT_NAME": "<YOUR_AZURE_STORAGE_ACCOUNT_NAME>"
   "STORAGE_ACCOUNT_KEY": "<YOUR_AZURE_STORAGE_ACCOUNT_KEY>"
+  "CONTAINER_NAME" : "<YOUR_STORAGE_CONTAINER_NAME>"
+  "ZIPFILE_NAME" : "<YOUR_ZIPPED_DATASET_NAME>"
 ```
+
+[This documentation](train_keras.py) tells you how to set up GPU VMs for Azure Machine Learning Services.
+
+You need to modify the auto-generated runconfig file after the registration of your VM.
 
 Run `train_keras.py` like below from Azure Machine Learning.
 
-`az ml experiment submit -c YOUR_VM_TARGET .\train_keras.py --gpu 2 --use_weights True --score True --learning_rates 0.001 0.0005 0.00002 --epochs 20 10 10 --model_type Xception`
+`az ml experiment submit -c YOUR_VM_TARGET ./train_keras.py --gpu 2 --use_weights True --score True --learning_rates 0.001 0.0005 0.00002 --epochs 20 10 10 --model_type Xception`
 
 All of run histories, logs and trained models are managed by Azure Machine Learning Services.
 
-[This documentation](train_keras.py) tells you how to set up GPU VMs for Azure Machine Learning Services.
 
 ## Scripts
 
@@ -57,21 +62,22 @@ There are three scripts in this module - one for splitting your image data, one 
 
 ## `train_test_split.py`
 
-- `python -m scripts.train_test_split --image_dir data/my_photos --output_dir data/my_split --pct_test 10 --pct_validation 20 --seed 1337`
+- `python -m train_test_split --image_dir data/my_photos --output_dir data/my_split --pct_test 10 --pct_validation 20 --seed 1337`
    - Splits images in `data/my_photos` into output directory `data/my_split`
    - 10% of the images in each class go into `testing`, 20% into `validation`, and the other 70% into `training`
 
 ## `train_keras.py`
 
-- `python -m scripts.train_keras --image_dir data/my_split --model_type InceptionV3 --batch_size 8 --learning_rates 0.001 0.001 0.0005 --epochs 1 1 1 --use_weights True --score True --model_dir ./models --gpu 1`
+- `az ml experiment submit -c YOUR_VM_TARGET ./train_keras.py --model_type InceptionV3 --batch_size 8 --learning_rates 0.001 0.001 0.0005 --epochs 1 1 1 --use_weights True --score True --gpu 1`
    - Trains a new model based on a pre-trained InceptionV3 instance.
+   - This script needs to be run through Azure Machine Learning Services to manage trained models, logs and output files automatically by it.
    - Since `output_model` is not specified, the name is imputed from the hyperparameters.
    - Uses class-weights based on inverse class distribution.
    - Scores the results and writes out confusion matrix and description markdown file.
 
 ## `score_keras.py`
 
-- `python -m scripts.score_keras --model_dir ./models --model_name InceptionV3_avg-1024_relu_lr001-001-0005_wts_e1-1-1 --num_batches 20 --image_dir ./data/my_split`
+- `python -m score_keras --model_dir ./models --model_name InceptionV3_avg-1024_relu_lr001-001-0005_wts_e1-1-1 --num_batches 20 --image_dir ./data/my_split`
    - Scores an existing model (`./models/InceptionV3_avg-1024_relu_lr001-001-0005_wts_e1-1-1.h5`)
    - Uses images from `./data/my_split/testing` for evaluation.
    - Stores confusion matrix and scores into `./models`, into a `.png` and `.csv` respectively.

@@ -38,10 +38,11 @@ import argparse
 import logging
 from distutils.util import strtobool
 from utils.misc.azure_utils import load_file_from_blob
-from utils.misc.zip_helper import unzip_file
 from azureml.logging import get_azureml_logger
 import time
 import multiprocessing
+from pathlib import Path
+from shutil import unpack_archive
 
 FLAGS = None
 
@@ -117,9 +118,9 @@ def build_model_name(options):
 
 def write_model_desc(options, model_path, model_name, classes, weights,
                      train_gen, cm_path, metrics):
-    desc_file = os.path.join(model_path, model_name + '_desc.md')
+    desc_file = Path(model_path) / (model_name + '_desc.md')
     logger.info('Writing model description to {}'.format(desc_file))
-    with open(desc_file, 'w', encoding='utf-8') as fp:
+    with desc_file.open('w', encoding='utf-8') as fp:
         fp.write('# Model Details\n\n')
         fp.write('#### Model Type: {}\n\n'.format(options.model_type))
         fp.write(
@@ -158,7 +159,7 @@ def write_model_desc(options, model_path, model_name, classes, weights,
             if cm_path:
                 fp.write('### Confusion Matrix:\n\n')
                 fp.write('![Confusion Matrix](./{})\n\n'.format(
-                    os.path.basename(cm_path)))
+                    Path(cm_path).name))
             if metrics:
                 logger.info('Metrics:')
                 logger.info(metrics)
@@ -407,13 +408,13 @@ def evaluate(model_root, model, images, image_size, seed, top_n=None):
         x[0]
         for x in sorted(test_gen.class_indices.items(), key=lambda x: x[1])
     ]
-    metrics_path = model_root + "_metrics.csv"
-    cm_path = model_root + "_cm.png"
+    metrics_path = model_root.with_name(model_root.name + "_metrics.csv")
+    cm_path = model_root.with_name(model_root.name + "_cm.png")
     metrics, _, _ = score_keras.evaluate_model(
         model, test_gen, classes, metrics_path, cm_path, top_n=top_n)
-    class_map = model_root + "_classes.csv"
+    class_map = model_root.with_name(model_root.name + "_classes.csv")
     try:
-        with open(class_map, 'w', encoding='utf-8') as cmfp:
+        with class_map.open('w', encoding='utf-8') as cmfp:
             cmfp.write('Class,ID\n')
             for i, c in enumerate(classes):
                 cmfp.write('"{}",{}\n'.format(c, i))
@@ -564,18 +565,21 @@ if __name__ == '__main__':
     model_name = FLAGS.output_model if FLAGS.output_model else build_model_name(
         FLAGS)
     logger.info('Model name {}'.format(model_name))
-    shared_data_path = os.path.join(
-        os.environ['AZUREML_NATIVE_SHARE_DIRECTORY'])
-    container_name = "data"
-    zip_file_name = "output_all.zip"
-    data_dir = "data"
-    load_file_from_blob(container_name, zip_file_name,
-                        os.path.join(shared_data_path, zip_file_name))
-    unzip_file(
-        os.path.join(os.path.join(shared_data_path, zip_file_name)),
-        os.path.join(shared_data_path, data_dir))
-    FLAGS.image_dir = os.path.join(shared_data_path, data_dir,
-                                   zip_file_name.split(".")[0])
+
+    # download the dataset into comupte target if it is the first time
+    shared_data_path = Path(os.environ['AZUREML_NATIVE_SHARE_DIRECTORY'])
+    zip_file_path = shared_data_path / os.environ['ZIPFILE_NAME']
+    load_file_from_blob(os.environ['CONTAINER_NAME'],
+                        os.environ['ZIPFILE_NAME'], zip_file_path)
+    FLAGS.image_dir = str(shared_data_path / zip_file_path.stem)
+    if not (shared_data_path / zip_file_path.stem).is_dir():
+        unpack_archive(str(zip_file_path), str(shared_data_path))
+        logger.info("Unzipped into {}.".format(shared_data_path))
+    else:
+        logger.info(
+            "Unzipped directory {} already exists, skipping unzipping.".format(
+                FLAGS.image_dir))
+
     trained_model, weights, training_data, im_sz = train_model(
         FLAGS.image_dir,
         FLAGS.model_type,
@@ -596,10 +600,10 @@ if __name__ == '__main__':
         seed=FLAGS.seed,
         gpu=FLAGS.gpu)
     aml_run_logger.log('model_name', model_name)
-    model_root = os.path.join(FLAGS.model_dir, model_name)
-    model_file = model_root + '.h5'
+    model_root = Path(FLAGS.model_dir) / model_name
+    model_file = model_root.with_suffix('.h5')
     logger.info('Saving model to {}'.format(model_file))
-    os.makedirs(os.path.dirname(model_file), exist_ok=True)
+    model_file.parent.mkdir(exist_ok=True)
     trained_model.save(model_file)
     aml_run_logger.log(
         "hyperparameters", {

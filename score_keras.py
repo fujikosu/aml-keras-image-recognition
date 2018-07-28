@@ -17,6 +17,7 @@ import argparse
 import logging
 from keras.metrics import top_k_categorical_accuracy
 from keras import backend as K
+from pathlib import Path
 
 logger = logging.getLogger('score_keras')
 logger.setLevel(logging.INFO)
@@ -58,8 +59,8 @@ def plot_confusion_matrix(cm,
     plt.tight_layout()
     plt.ylabel('Actual Label')
     plt.xlabel('Predicted Label')
-    os.makedirs(os.path.dirname(outfile), exist_ok=True)
-    plt.savefig(outfile)
+    outfile.parent.mkdir(exist_ok=True)
+    plt.savefig(str(outfile))
 
 
 def load_model_and_images(model_file, image_dir, seed):
@@ -125,8 +126,8 @@ def evaluate_model(model,
             logger.info(
                 'Precision: {}, Recall: {}, F-Score: {}, Support: {}'.format(
                     precision, recall, fscore, support))
-        os.makedirs(os.path.dirname(output_metrics), exist_ok=True)
-        with open(output_metrics, 'w', encoding='utf-8') as fp:
+        output_metrics.parent.mkdir(exist_ok=True)
+        with output_metrics.open('w', encoding='utf-8') as fp:
             if top_n:
                 fp.write(
                     'Precision, Recall, F_Score, Top_{}, Support\n'.format(
@@ -184,14 +185,16 @@ if __name__ == '__main__':
         default=1337,
         help='Set seed for randomization of image iteration')
     FLAGS, _ = parser.parse_known_args()
-    model_path = os.path.join(FLAGS.model_dir, FLAGS.model_name + ".h5")
-    cm_path = FLAGS.output_img if FLAGS.output_img else os.path.join(
-        FLAGS.model_dir, FLAGS.model_name + "_cm.png")
-    metrics_path = FLAGS.output_metrics if FLAGS.output_metrics else os.path.join(
-        FLAGS.model_dir, FLAGS.model_name + "_metrics.csv")
+    model_path = Path(FLAGS.model_dir) / (FLAGS.model_name + ".h5")
+    cm_path = Path(
+        FLAGS.output_img) if FLAGS.output_img else Path(FLAGS.model_dir) / (
+            FLAGS.model_name + "_cm.png")
+    metrics_path = Path(
+        FLAGS.output_metrics) if FLAGS.output_metrics else Path(
+            FLAGS.model_dir) / (FLAGS.model_name + "_metrics.csv")
     img_path = FLAGS.image_dir
-    if os.path.exists(os.path.join(img_path, "testing")):
-        img_path = os.path.join(img_path, "testing")
+    if Path(img_path / "testing").exists:
+        img_path = Path(img_path / "testing")
     m, i, c = load_model_and_images(model_path, img_path, FLAGS.seed)
     logger.info('Loaded model from {}'.format(model_path))
     logger.info('Evaluating model using images from {}'.format(img_path))

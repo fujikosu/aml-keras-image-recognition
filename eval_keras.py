@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import confusion_matrix, precision_recall_fscore_support
 import argparse
 import logging
+from pathlib import Path
 
 logger = logging.getLogger('eval_keras')
 logger.setLevel(logging.INFO)
@@ -22,8 +23,8 @@ FLAGS = None
 
 
 def load_model_and_classmap(model_file, class_map_file):
-    model = load_model(model_file)
-    with open(class_map_file, 'r', encoding='utf-8') as cmfp:
+    model = load_model(str(model_file))
+    with class_map_file.open('r', encoding='utf-8') as cmfp:
         reader = csv.reader(cmfp)
         next(reader, None)  # Skip header
         class_map = dict((int(row[1]), row[0]) for row in reader)
@@ -69,9 +70,9 @@ if __name__ == '__main__':
         required=True,
         help='Image to evaluate, may specify more than one.')
     FLAGS, _ = parser.parse_known_args()
-    model_path = os.path.join(FLAGS.model_dir, FLAGS.model_name + ".h5")
-    class_map_path = os.path.join(FLAGS.model_dir,
-                                  FLAGS.model_name + "_classes.csv")
+    model_path = Path(FLAGS.model_dir) / (FLAGS.model_name + ".h5")
+    class_map_path = Path(FLAGS.model_dir) / (
+        FLAGS.model_name + "_classes.csv")
     m, cm = load_model_and_classmap(model_path, class_map_path)
     logger.info('Loaded model from {}'.format(model_path))
     for img in FLAGS.image:
